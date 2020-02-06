@@ -76,11 +76,9 @@ impl Lexer {
             Some('*') => Token::Asterisk,
             Some('/') => Token::Slash,
             Some(';') => Token::Semicolon,
-            Some('=') => {
-                match self.peek_char() {
-                    Some(x) if x == '=' => Token::Eq,
-                    _ => Token::Assign,
-                }
+            Some('=') => match self.peek_char() {
+                Some(x) if x == '=' => Token::Eq,
+                _ => Token::Assign,
             },
             Some('>') => Token::Gt,
             Some('<') => Token::Lt,
@@ -89,24 +87,44 @@ impl Lexer {
             Some('(') => Token::LParen,
             Some(')') => Token::RParen,
             // numbers, keywords, and identifiers
-            Some(x) if x.is_alphabetic() => {
+            Some(x) if x.is_ascii_alphabetic() => {
                 let ident = self.read_identifier();
+                if is_keyword(&ident) {
+                    match ident.as_str() {
+                        "fn" => return Token::Function,
+                        "let" => return Token::Let,
+                        "return" => return Token::Return,
+                        "if" => return Token::If,
+                        "else" => return Token::Else,
+                        "true" => return Token::True,
+                        "false" => return Token::False,
+                        _ => unreachable!(),
+                    }
+                }
                 Token::Ident(ident)
-            },
+            }
+            Some(x) if x.is_ascii_digit() => {
+                let i = self.read_int();
+                if i.is_none() {
+                    // error parsing int
+                    return Token::Illegal;
+                }
+                Token::Int(i.unwrap())
+            }
             _ => Token::Illegal,
         }
     }
 
     fn eat_whitespace(&mut self) {
         loop {
-            self.read_char();
             if self.ch.is_none() {
-                break;
+                return;
             }
             // unwrap is safe because we checked for None
             if !self.ch.unwrap().is_whitespace() {
-                break;
+                return;
             }
+            self.read_char();
         }
     }
 
@@ -114,7 +132,7 @@ impl Lexer {
         if self.read_pos >= self.input.len() {
             self.ch = None;
         } else {
-            self.ch = Some(self.input[self.pos]);
+            self.ch = Some(self.input[self.read_pos]);
         }
         self.pos = self.read_pos;
         self.read_pos += 1;
@@ -122,24 +140,44 @@ impl Lexer {
 
     fn read_identifier(&mut self) -> String {
         let pos = self.pos;
-        self.read_char();
+        // self.read_char();
         while let Some(x) = self.ch {
             if !x.is_alphabetic() {
                 break;
-            }
+            } 
             self.read_char();
         }
         use std::iter::FromIterator;
         String::from_iter(&self.input[pos..self.pos])
     }
 
-    fn peek_char(&mut self) -> Option<char> {
-        if self.read_pos >= self.input.len() {
-           return None;
-        } 
-        return Some(self.input[self.read_pos]);
+    fn read_int(&mut self) -> Option<i64> {
+        let pos = self.pos;
+        self.read_char();
+        while let Some(x) = self.ch {
+            if !x.is_ascii_digit() {
+                break;
+            }
+        }
+        use std::iter::FromIterator;
+        use std::str::FromStr;
+        let s = String::from_iter(&self.input[pos..self.pos]);
+        i64::from_str(&s).ok()
     }
 
+    fn peek_char(&mut self) -> Option<char> {
+        if self.read_pos >= self.input.len() {
+            return None;
+        }
+        return Some(self.input[self.read_pos]);
+    }
+}
+
+fn is_keyword(s: &str) -> bool {
+    match s {
+        "fn" | "let" | "return" | "if" | "else" | "true" | "false" => true,
+        _ => false,
+    }
 }
 
 #[derive(Debug, Error)]
@@ -152,7 +190,7 @@ enum LexerError {
 
 #[test]
 fn test_lexer() {
-    let input = r#"let five = 5;
+    let input = r#" let five = 5;
 let ten = 10;
 
 let add = fn(x, y) {
