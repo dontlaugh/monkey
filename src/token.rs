@@ -68,9 +68,11 @@ impl Lexer {
 
     pub fn next_token(&mut self) -> Token {
         self.eat_whitespace();
+        // println!("CURRENT CHAR {:?}", self.ch);
 
         let tkn = match self.ch {
             None => Token::Eof,
+            Some(',') => Token::Comma,
             Some('+') => Token::Plus,
             Some('-') => Token::Minus,
             Some('*') => Token::Asterisk,
@@ -82,7 +84,15 @@ impl Lexer {
                     Token::Eq
                 },
                 Some(_) => Token::Assign,
-                None => Token::Eof,
+                _ => unreachable!()
+            },
+            Some('!') => match self.peek_char() {
+                Some(x) if x == '=' => {
+                    self.read_char();
+                    Token::NotEq
+                },
+                Some(_) => Token::Bang,
+                _ => unreachable!()
             },
             Some('>') => Token::Gt,
             Some('<') => Token::Lt,
@@ -91,6 +101,11 @@ impl Lexer {
             Some('(') => Token::LParen,
             Some(')') => Token::RParen,
             // numbers, keywords, and identifiers
+            // We have lots of early returns here because the internal behavior
+            // of read_identifier and read_int has it's own looping calls to
+            // read_char. The single-char cases of this match statement (the one
+            // we're in right now) do not, and instead rely on the call to 
+            // read_char at the end of this function to advance our lexer.
             Some(x) if x.is_ascii_alphabetic() => {
                 let ident = self.read_identifier();
                 if is_keyword(&ident) {
@@ -104,16 +119,18 @@ impl Lexer {
                         "false" => return Token::False,
                         _ => unreachable!(),
                     }
+                } else {
+                    return Token::Ident(ident)
                 }
-                Token::Ident(ident)
             }
             Some(x) if x.is_ascii_digit() => {
                 let i = self.read_int();
                 if i.is_none() {
                     // error parsing int
-                    return Token::Illegal;
+                    return Token::Illegal
+                } else {
+                    return Token::Int(i.unwrap())
                 }
-                Token::Int(i.unwrap())
             }
             _ => Token::Illegal,
         };
@@ -130,6 +147,7 @@ impl Lexer {
             if !self.ch.unwrap().is_whitespace() {
                 return;
             }
+            //println!("EAT WHITESPACE READ CHAR");
             self.read_char();
         }
     }
@@ -146,12 +164,13 @@ impl Lexer {
 
     fn read_identifier(&mut self) -> String {
         let pos = self.pos;
-        // self.read_char();
         while let Some(x) = self.ch {
-            if !x.is_alphabetic() {
+            //println!("READIDENTIFIER: {:?} pos {:?} self.pos {:?}", x, pos, self.pos);
+            if x.is_alphabetic() {
+                self.read_char();
+            } else {
                 break;
-            } 
-            self.read_char();
+            }
         }
         use std::iter::FromIterator;
         String::from_iter(&self.input[pos..self.pos])
@@ -159,9 +178,11 @@ impl Lexer {
 
     fn read_int(&mut self) -> Option<i64> {
         let pos = self.pos;
-        self.read_char();
         while let Some(x) = self.ch {
-            if !x.is_ascii_digit() {
+            //println!("READINT: {:?} pos {:?} self.pos {:?}", x, pos, self.pos);
+            if x.is_ascii_digit() {
+                self.read_char();
+            } else {
                 break;
             }
         }
@@ -196,8 +217,8 @@ enum LexerError {
 
 #[test]
 fn test_lexer() {
-    let input = r#"let five = 5;
-let ten = 10;
+    let input = r#"let five = 5; 
+    let ten = 10;
 
 let add = fn(x, y) {
   x + y;
@@ -297,102 +318,48 @@ if (5 < 10) {
     assert_eq!(Token::Eof, l.next_token());
 }
 
-/*
-    tests := []struct {
-        expectedType    token.TokenType
-        expectedLiteral string
-    }{
-        assert_eq!(Token::Let, l.next_token()),
-        assert_eq!(Token::Ident(String::from("five")), l.next_token()),
-        assert_eq!(Token::Assign, l.next_token()),
-        assert_eq!(Token::Int(5), l.next_token()),
-        assert_eq!(Token::Semicolon, l.next_token()),
-        assert_eq!(Token::Let, l.next_token()),
-        assert_eq!(Token::Ident(String::from("ten")), l.next_token()),
-        assert_eq!(Token::Assign, l.next_token()),
-        assert_eq!(Token::Int(10), l.next_token()),
-        assert_eq!(Token::Semicolon, l.next_token()),
-        assert_eq!(Token::Let, l.next_token()),
-        assert_eq!(Token::Ident(String::from("add")), l.next_token()),
-        assert_eq!(Token::Assign, l.next_token()),
-        assert_eq!(Token::Function, l.next_token()),
-        assert_eq!(Token::LParen, l.next_token()),
-        assert_eq!(Token::Ident(String::from("x")), l.next_token()),
-        assert_eq!(Token::Comma, l.next_token()),
-        assert_eq!(Token::Ident(String::from("y")), l.next_token()),
-        assert_eq!(Token::RParen, l.next_token()),
-        assert_eq!(Token::LBrace, l.next_token()),
-        assert_eq!(Token::Ident, l.next_token()),
-        assert_eq!(Token::Plus, l.next_token()),
-        assert_eq!(Token::Ident(String::from("y")), l.next_token()),
-        assert_eq!(Token::Semicolon, l.next_token()),
-        assert_eq!(Token::RBrace, l.next_token()),
-        assert_eq!(Token::Semicolon, l.next_token()),
-        assert_eq!(Token::Let, l.next_token()),
-        assert_eq!(Token::Ident(String::from("result")), l.next_token()),
-        assert_eq!(Token::Assign, l.next_token()),
-        assert_eq!(Token::Ident(String::from("add")), l.next_token()),
-        assert_eq!(Token::LParen, l.next_token()),
-        assert_eq!(Token::Ident(String::from("five")), l.next_token()),
-        assert_eq!(Token::Comma, l.next_token()),
-        assert_eq!(Token::Ident(String::from("ten")), l.next_token()),
-        assert_eq!(Token::RParen, l.next_token()),
-        assert_eq!(Token::Semicolon, l.next_token()),
-        assert_eq!(Token::Bang, l.next_token()),
-        assert_eq!(Token::Minus, l.next_token()),
-        assert_eq!(Token::Slash, l.next_token()),
-        assert_eq!(Token::Asterisk, l.next_token()),
-        assert_eq!(Token::Int(5), l.next_token()),
-        assert_eq!(Token::Semicolon, l.next_token()),
-        assert_eq!(Token::Int(5), l.next_token()),
-        assert_eq!(Token::Lt, l.next_token()),
-        assert_eq!(Token::Int(10), l.next_token()),
-        assert_eq!(Token::Gt, l.next_token()),
-        assert_eq!(Token::Int(5), l.next_token()),
-        assert_eq!(Token::Semicolon, l.next_token()),
-        assert_eq!(Token::If, l.next_token()),
-        assert_eq!(Token::LParen, l.next_token()),
-        assert_eq!(Token::Int(5), l.next_token()),
-        assert_eq!(Token::Lt, l.next_token()),
-        assert_eq!(Token::Int(10), l.next_token()),
-        assert_eq!(Token::RParen, l.next_token()),
-        assert_eq!(Token::LBrace, l.next_token()),
-        assert_eq!(Token::Return, l.next_token()),
-        assert_eq!(Token::True, l.next_token()),
-        assert_eq!(Token::Semicolon, l.next_token()),
-        assert_eq!(Token::RBrace, l.next_token()),
-        assert_eq!(Token::Else, l.next_token()),
-        assert_eq!(Token::LBrace, l.next_token()),
-        assert_eq!(Token::Return, l.next_token()),
-        assert_eq!(Token::False, l.next_token()),
-        assert_eq!(Token::Semicolon, l.next_token()),
-        assert_eq!(Token::RBrace, l.next_token()),
-        assert_eq!(Token::Int(10), l.next_token()),
-        assert_eq!(Token::Eq, l.next_token()),
-        assert_eq!(Token::Int(10), l.next_token()),
-        assert_eq!(Token::Semicolon, l.next_token()),
-        assert_eq!(Token::Int(10), l.next_token()),
-        assert_eq!(Token::NotEq, l.next_token()),
-        assert_eq!(Token::Int(9), l.next_token()),
-        assert_eq!(Token::Semicolon, l.next_token()),
-        assert_eq!(Token::Eof, l.next_token()),
-    )
+#[test]
+fn test_read_identifier() {
+    // no leading whitespace
+    let input = "foo   ";
+    let br = BufReader::new(input.as_bytes());
+    let mut l = Lexer::new(br).unwrap();
+    let output = l.read_identifier();
+    assert_eq!("foo".to_owned(), output);
 
-    l := New(input)
-
-    for i, tt := range tests {
-        tok := l.NextToken()
-
-        if tok.Type != tt.expectedType {
-            t.Fatalf("tests[%d] - tokentype wrong. expected=%q, got=%q",
-                i, tt.expectedType, tok.Type)
-        }
-
-        if tok.Literal != tt.expectedLiteral {
-            t.Fatalf("tests[%d] - literal wrong. expected=%q, got=%q",
-                i, tt.expectedLiteral, tok.Literal)
-        }
-    }
+    // leading whitespace to eat first (yum!)
+    let input = "   foo   ";
+    let br = BufReader::new(input.as_bytes());
+    let mut l = Lexer::new(br).unwrap();
+    l.eat_whitespace();
+    let output = l.read_identifier();
+    assert_eq!("foo".to_owned(), output);
 }
 
-*/
+
+#[test]
+fn test_read_int() {
+
+    // no leading whitespace
+    let input = "10   ";
+    let br = BufReader::new(input.as_bytes());
+    let mut l = Lexer::new(br).unwrap();
+    let output = l.read_int();
+    assert_eq!(Some(10), output);
+
+    // leading whitespace to eat first (yum!)
+    let input = "   7   ";
+    let br = BufReader::new(input.as_bytes());
+    let mut l = Lexer::new(br).unwrap();
+    l.eat_whitespace();
+    let output = l.read_int();
+    assert_eq!(Some(7), output);
+
+    let input = "   7;;   ";
+    let br = BufReader::new(input.as_bytes());
+    let mut l = Lexer::new(br).unwrap();
+    l.eat_whitespace();
+    let output = l.read_int();
+    assert_eq!(Some(7), output);
+
+}
