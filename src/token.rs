@@ -69,7 +69,7 @@ impl Lexer {
     pub fn next_token(&mut self) -> Token {
         self.eat_whitespace();
 
-        match self.ch {
+        let tkn = match self.ch {
             None => Token::Eof,
             Some('+') => Token::Plus,
             Some('-') => Token::Minus,
@@ -77,8 +77,12 @@ impl Lexer {
             Some('/') => Token::Slash,
             Some(';') => Token::Semicolon,
             Some('=') => match self.peek_char() {
-                Some(x) if x == '=' => Token::Eq,
-                _ => Token::Assign,
+                Some(x) if x == '=' => {
+                    self.read_char();
+                    Token::Eq
+                },
+                Some(_) => Token::Assign,
+                None => Token::Eof,
             },
             Some('>') => Token::Gt,
             Some('<') => Token::Lt,
@@ -112,7 +116,9 @@ impl Lexer {
                 Token::Int(i.unwrap())
             }
             _ => Token::Illegal,
-        }
+        };
+        self.read_char();
+        tkn
     }
 
     fn eat_whitespace(&mut self) {
@@ -190,7 +196,7 @@ enum LexerError {
 
 #[test]
 fn test_lexer() {
-    let input = r#" let five = 5;
+    let input = r#"let five = 5;
 let ten = 10;
 
 let add = fn(x, y) {
@@ -218,6 +224,7 @@ if (5 < 10) {
     assert_eq!(Token::Ident(String::from("five")), l.next_token());
     assert_eq!(Token::Assign, l.next_token());
     assert_eq!(Token::Int(5), l.next_token());
+
     assert_eq!(Token::Semicolon, l.next_token());
     assert_eq!(Token::Let, l.next_token());
     assert_eq!(Token::Ident(String::from("ten")), l.next_token());
